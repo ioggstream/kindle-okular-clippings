@@ -1,10 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
-    Parse a PDF file to a list of text
+    Parse a PDF file to a list of text.
+
+    Code inspired by pdf2txt.py
 """
 
-
+from pdfminer.layout import LTTextLineHorizontal
 from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
@@ -14,7 +16,7 @@ from pdfminer.converter import TextConverter
 from pdfminer.cmapdb import CMapDB
 from pdfminer.layout import LAParams
 from StringIO import StringIO
-
+import re
 CODEC = 'utf-8'
 caching = True
 debug = False
@@ -52,3 +54,22 @@ def pdf_to_text(book_file, maxpages=0):
             interpreter.process_page(p)
             yield outfp.getvalue()
             outfp.truncate(0)
+
+def get_clipping_position(clip, pdf_query):
+    """
+    Get the clipping position in a file, that is (pageid, location-4ple)
+    :param clip:
+    :param pdf_query: a PDFQuery object
+    :return: a 2-tuple of (pageid, 4-tuple coordinates)
+    """
+    # cleanup the clip before searching
+    clip = re.sub(r"[()]", "",  clip[:10])
+    labels = pdf_query.pq(':contains("%s")' % clip)
+    pageid, height, width = (float(labels[1].attrib[x]) for x in "pageid height width".split())
+
+    for label in labels:
+        if not hasattr(label, 'layout'):
+            continue
+        l = label.layout
+        if isinstance(l, LTTextLineHorizontal):
+            return int(pageid), (float(l.x0)/width, (height-float(l.y0))/height, float(l.x1)/width, (height - float(l.y1))/height)
