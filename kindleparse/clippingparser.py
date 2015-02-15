@@ -24,17 +24,17 @@ import pdfparser
 re_spaces = re.compile("\s+")
 
 
-
 def cleanup_for_match(s):
     if not isinstance(s, unicode):
-        s = s.decode(pdfparser.codec)
+        s = s.decode(pdfparser.CODEC)
 
     return re_spaces.sub(" ", s.strip().lower())
 
 
 def loggable(wrapped_f):
     def tmp(*args, **k):
-        print(wrapped_f.__name__, args, k)
+        print(wrapped_f.__name__, [x[:15]
+              for x in args if isinstance(x, basestring)], k)
         return wrapped_f(*args, **k)
 
     return tmp
@@ -93,8 +93,7 @@ def get_amazon_title(pdf_object, clippings):
             return k
 
 
-
-# @loggable
+#@loggable
 def find_clipping_in_page(clip_text, page_content):
     """
 
@@ -116,9 +115,6 @@ def find_clipping_in_page(clip_text, page_content):
 
 
 def search_clippings_in_book(book_file, clippings, limit_page=None, limit_clips=None):
-    """ yields a generator of [ (page, "clip"), ... ]
-    """
-
     with open(book_file, 'rb') as fh:
         pdf = PdfFileReader(fh)
         title = get_amazon_title(pdf, clippings)
@@ -128,34 +124,40 @@ def search_clippings_in_book(book_file, clippings, limit_page=None, limit_clips=
         # Force evaluation of the generator...maybe there's a
         # better way to implement the following algorithm
         text_pages = list(pdfparser.pdf_to_text(book_file))
+        return search_clippings_in_text(book_clippings, text_pages)
 
-        n, p = 0, 0
-        mmin = lambda x, A: min(x, len(A)) if x else len(A)
-        limit_page = mmin(limit_page, text_pages)
-        limit_clips = mmin(limit_clips, book_clippings)
-        #
-        # This algorithm is sloppy but works around the case
-        # of unmatching clippings.
-        # If I can't find a clip, I have to rewind to the last
-        # matching page
-        while n < limit_clips:
-            for i in xrange(p, limit_page):
-                if n >= limit_clips:
-                    break
-                bc = book_clippings[n]
-                content = text_pages[i]
-                if content and find_clipping_in_page(bc, content):
-                    # clip found at the given page:
-                    # - go to the next clip
-                    # - start from this page
-                    print("Note found, %r" % [i, bc])
-                    yield i, bc
-                    n += 1
-                    p = i
-            else:
-                print("Note not found: %r" % [n, p, bc])
+
+def search_clippings_in_text(book_clippings, text_pages, limit_page=None, limit_clips=None):
+    """ yields a generator of [ (page, "clip"), ... ]
+    """
+    n, p = 0, 0
+    mmin = lambda x, A: min(x, len(A)) if x else len(A)
+    limit_page = mmin(limit_page, text_pages)
+    limit_clips = mmin(limit_clips, book_clippings)
+    #
+    # This algorithm is sloppy but works around the case
+    # of unmatching clippings.
+    # If I can't find a clip, I have to rewind to the last
+    # matching page
+    while n < limit_clips:
+        i = p
+        while i < limit_page:
+            if n >= limit_clips:
+                break
+            bc = book_clippings[n]
+            content = text_pages[i]
+            if content and find_clipping_in_page(bc, content):
+                # clip found at the given page:
+                # - go to the next clip
+                # - start from this page
+                print("Note found, %r" % [i, bc])
+                yield i, bc
                 n += 1
+                p = i
+            else:
+                i += 1
 
-
-
-
+        else:
+            print("Note not found: %r" % [n, p, bc])
+            raise ValueError()
+            n += 1

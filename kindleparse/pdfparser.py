@@ -15,7 +15,7 @@ from pdfminer.cmapdb import CMapDB
 from pdfminer.layout import LAParams
 from StringIO import StringIO
 
-codec = 'utf-8'
+CODEC = 'utf-8'
 caching = True
 debug = False
 PDFDocument.debug = debug
@@ -41,15 +41,14 @@ def pdf_to_text(book_file, maxpages=0):
     rsrcmgr = PDFResourceManager(caching=caching)
     with file(book_file, 'rb') as fp:
         # Create a TextConverter device writing out to our buffer
-        device = TextConverter(rsrcmgr, outfp, codec=codec, laparams=laparams,
-                                       imagewriter=imagewriter)
+        device = TextConverter(rsrcmgr, outfp, codec=CODEC, laparams=laparams,
+                               imagewriter=imagewriter)
         interpreter = PDFPageInterpreter(rsrcmgr, device)
         # Parse the pdf file, retrieving only the matching pages
         pages = PDFPage.get_pages(fp, maxpages=maxpages,
-                                      caching=caching,
-                                      check_extractable=True)
+                                  caching=caching,
+                                  check_extractable=True)
         for p in pages:
             interpreter.process_page(p)
             yield outfp.getvalue()
             outfp.truncate(0)
-

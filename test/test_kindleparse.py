@@ -6,7 +6,7 @@ from xml.etree.ElementTree import tostring, parse
 from pyPdf import PdfFileReader
 from nose.tools import assert_equal, assert_in, assert_true
 
-from kindleparse import pdf_to_text, codec as pdf_parser_codec, parse_clippings
+from kindleparse import pdf_to_text, CODEC as pdf_parser_codec, parse_clippings
 from kindleparse import clippingparser
 from kindleparse.okularwriter import mk_destfile, create_xml_file
 
@@ -14,6 +14,7 @@ from kindleparse.okularwriter import mk_destfile, create_xml_file
 clippings_file = "clippings.txt"
 book_file = "sample.pdf"
 amazon_title = 'High Performance MySQL, Third Edition (Baron Schwartz)'
+
 
 def test_parse_clippings():
     clippings = parse_clippings(clippings_file)
@@ -27,14 +28,12 @@ def test_get_clippings_title_for_book():
     assert_equal(amazon_title, title)
 
 
-
 def test_print_file():
     pdf_file = PdfFileReader(open(book_file, 'rb'))
     for p in pdf_file.pages:
         tt = p.extractText()
         if tt:
             print(tt)
-
 
 
 def test_create_fake_okular_xml():
@@ -73,13 +72,17 @@ def test_pdf_extract():
         item_no = page - 1
         yield assert_in, needle, pages[item_no].decode(pdf_parser_codec)
 
+
 def test_find_clipping_in_page():
     expected_clip_in_page = [
         (1, 'You can buy this book at oreilly.com'),
         (18,  's troublesome. There’s nothing wrong with multiple'),
         (19, ("The locking style that offers the greatest concurrency "
-             "(and carries the greatest overhead) is the use of row locks."
-             " Row-level locking, as this strategy is commonly known, is"))
+              "(and carries the greatest overhead) is the use of row locks."
+              " Row-level locking, as this strategy is commonly known, is")),
+        (18, ("follows. Read locks on a resource are shared, or mutually nonblocking: many clients "
+              "can read from a resource at the same time and not interfere with each other. Write "
+              "locks, on the other hand, are exclusive—i.e., they block both read locks and other write"))
     ]
 
     pages = list(pdf_to_text(book_file))
@@ -89,3 +92,23 @@ def test_find_clipping_in_page():
         success = clippingparser.find_clipping_in_page(needle, pages[item_no])
         yield assert_true, success, (needle, pages[item_no])
 
+
+def test_search_clipping_in_book():
+    from kindleparse import pdfparser
+
+    expected_clip_in_page = [
+        (1, 'You can buy this book at oreilly.com'),
+        (18,  's troublesome. There’s nothing wrong with multiple'),
+        (18, ("follows. Read locks on a resource are shared, or mutually nonblocking: many clients "
+              "can read from a resource at the same time and not interfere with each other. Write "
+              "locks, on the other hand, are exclusive—i.e., they block both read locks and other write")),
+        (19, ("The locking style that offers the greatest concurrency "
+              "(and carries the greatest overhead) is the use of row locks."
+              " Row-level locking, as this strategy is commonly known, is")),
+
+    ]
+    pgnos, clippings = zip(*expected_clip_in_page)
+    pgnos = list(pgnos)
+    pages = list(pdfparser.pdf_to_text(book_file))
+    for ep, ec in clippingparser.search_clippings_in_text(clippings, pages):
+        yield assert_equal, ep+1, pgnos.pop(0)

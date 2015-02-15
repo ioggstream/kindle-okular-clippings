@@ -15,8 +15,10 @@
 """
 from __future__ import unicode_literals, print_function
 from os.path import isfile
-
 from kindleparse import *
+
+# Overwrite existing annotation file
+overwrite = False
 
 
 def usage():
@@ -36,12 +38,10 @@ if __name__ == '__main__':
     # parse My Clippings.txt
     clippings = parse_clippings(clip_file)
     # search the clippings in your pdf
-    paged_clippings = search_clippings_in_book(pdf_file, clippings,
-                                               limit_page=50,
-                                               limit_clips=50)
+    paged_clippings = search_clippings_in_book(pdf_file, clippings)
     # generate the xml file
     destfile = mk_destfile(pdf_file)
-    if isfile(destfile):
+    if isfile(destfile) and not overwrite:
         raise ValueError("File %r already exists: backup your delete existing copy!" % destfile)
     print("Creating file: ", destfile)
     create_xml_file(destfile, paged_clippings)
