@@ -34,7 +34,7 @@ if __name__ == '__main__':
     # generate the xml file
     destfile = kindleparse.mk_destfile(pdf_file)
     if isfile(destfile) and not overwrite:
-        raise ValueError("File %r already exists: backup your delete existing copy!" % destfile)
+        raise ValueError("File %r already exists: backup your existing copy and rerun with -f to overwrite!" % destfile)
 
     pdf = kindleparse.ClippablePDF(pdf_file)
     if args.inline:

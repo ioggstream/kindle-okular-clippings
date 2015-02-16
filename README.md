@@ -24,7 +24,7 @@ Just:
 
 That is
 
-    #python kindleparse.py test/clippings.txt test/sample.pdf
+    #python kindleparse.py -c test/clippings.txt test/sample.pdf
     #okular test/sample.pdf
 
 
