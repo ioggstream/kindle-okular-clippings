@@ -16,9 +16,8 @@
 from __future__ import unicode_literals, print_function
 from collections import defaultdict
 
-from pyPdf import PdfFileReader
 import re
-import pdfparser
+import clippablepdf
 
 
 re_spaces = re.compile("\s+")
@@ -26,7 +25,7 @@ re_spaces = re.compile("\s+")
 
 def cleanup_for_match(s):
     if not isinstance(s, unicode):
-        s = s.decode(pdfparser.CODEC)
+        s = s.decode(clippablepdf.CODEC)
 
     return re_spaces.sub(" ", s.strip().lower())
 
@@ -81,16 +80,16 @@ def parse_clippings(clippings_path):
     return clippings
 
 
-def get_amazon_title(pdf_object, clippings):
+def find_clippings(book_title, clippings):
     """
-    Return the title used by kindle clippings for a given book
-    :param pdf_object:
+    Return (book, clippings) for a given book
+    :param book_title:
     :param clippings: a dict of all your clippings
-    :return: a book title usable as a key for the clippings
+    :return: a couple, (book, clippings)
     """
-    for k in clippings:
-        if bytes(pdf_object.documentInfo['/Title']) in k:
-            return k
+    for k, v in clippings.items():
+        if bytes(book_title) in k:
+            return k, v
 
 
 #@loggable
@@ -114,21 +113,14 @@ def find_clipping_in_page(clip_text, page_content):
     return found
 
 
-def search_clippings_in_book(book_file, clippings, limit_page=None, limit_clips=None):
-    with open(book_file, 'rb') as fh:
-        pdf = PdfFileReader(fh)
-        title = get_amazon_title(pdf, clippings)
-        if not title:
-            raise ValueError("Clippings not found for %r" % book_file)
-        book_clippings = clippings[title]
-        # Force evaluation of the generator...maybe there's a
-        # better way to implement the following algorithm
-        text_pages = list(pdfparser.pdf_to_text(book_file))
-        return search_clippings_in_text(book_clippings, text_pages)
-
-
 def search_clippings_in_text(book_clippings, text_pages, limit_page=None, limit_clips=None):
-    """ yields a generator of [ (page, "clip"), ... ]
+    """
+    Get clippings from a text book
+    :param book_clippings:
+    :param text_pages:
+    :param limit_page:
+    :param limit_clips:
+    :return: a generator of [ (page, "clip"), ... ]
     """
     n, p = 0, 0
     mmin = lambda x, A: min(x, len(A)) if x else len(A)

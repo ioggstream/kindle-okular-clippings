@@ -1,3 +1,4 @@
-pyPdf
 pdfminer
+pdfquery
+pypdf
 nose

@@ -1,10 +1,14 @@
+"""
+    Writes the xml annotations file. Must be aware of the codec used by pdf parser
+"""
 from __future__ import unicode_literals, print_function, division
 import uuid
 from xml.etree.ElementTree import Element, ElementTree
 from os.path import basename, join as pjoin, getsize, expanduser
 from collections import defaultdict
-from pdfparser import CODEC as PDF_CODEC, get_clipping_position
-
+from clippablepdf import CODEC as PDF_CODEC
+import logging
+log = logging.getLogger(__name__)
 REVISION_LINE_SEP = b'&#xa;'
 OKULAR_HOME = "~/.kde/share/apps/okular/docdata"
 
@@ -18,13 +22,10 @@ def mk_destfile(filepath):
                  )
 
 
-
-
-
 class BaseNote(Element):
     def __init__(self, **kwds):
         attrib = {
-                'creationDate': "2015-02-12T14:41:18",
+            'creationDate': "2015-02-12T14:41:18",
                 'uniqueName': "okular-{%s}" % str(uuid.uuid4()),
                 'color': "#ffff00",
                 'author': "Roberto Polli",
@@ -44,6 +45,13 @@ class AnnotationHL(Element):
 class AnnotationIL(Element):
     def __init__(self):
         Element.__init__(self, 'annotation', attrib={'type': '1'})
+
+
+class Page(Element):
+    def __init__(self, page_index):
+        Element.__init__(self, 'page', attrib={'number': str(page_index)})
+        self.append(Element('annotationList'))
+
 
 def create_highlight(points):
     """
@@ -75,11 +83,11 @@ def create_highlight(points):
     base = BaseNote(flags="0")
     annotation.append(base)
     boundary = Element(
-                'boundary', attrib=dict(l="0",
-                                        r=".3",
-                                        t="0",
-                                        b="1")
-            )
+        'boundary', attrib=dict(l="0",
+                                r=".3",
+                                t="0",
+                                b="1")
+    )
     base.append(boundary)
     hl = Element('hl')
     hl.append(Element('quad', attrib=dict(
@@ -92,31 +100,89 @@ def create_highlight(points):
     annotation.append(hl)
     return annotation
 
-def create_xml_file_hl(filepath, paged_clippings, pdf_query):
+
+def create_xml_file_hl2(destfile_xml, clippings, pdf_parser):
+    """
+
+    :param destfile_xml: the destination file
+    :param clippings: a list of clippings
+    :param pdf_parser: a PDFParser object
+    :return: None
+    """
+    assert destfile_xml.endswith(".xml")
+    clippings = list(clippings)
+    documentInfo = Element('documentInfo', attrib={'url': destfile_xml})
+    pageList = Element('pageList')
+    pages = {}
+    found = []
+    for i in xrange(0, pdf_parser.num_pages, 20):
+        # search on 20 pages at a time
+        # to limit memory consumption.
+        # PDFQuery.load can eat up all your RAM!
+        pgs = range(i, min(i + 20, pdf_parser.num_pages))
+        log.info("loading pages %r" % pgs)
+        pdf_parser.pdf_query.load(*pgs)
+
+        # don't search twice the same elements
+        # this is not expensive as the PDFQuery.load
+        # so it's ok
+        while found:
+            clippings.remove(found.pop())
+
+        log.info("Searching for %r" % clippings)
+        for clip in clippings:
+            ret = pdf_parser.get_clipping_position(clip)
+            if not ret:
+                log.info("Can't find clip: %r" % clip)
+                continue
+            # remove item from clippings
+            found.append(clip)
+            page_index, points = ret
+            if page_index not in pages:
+                # Prepare the page structure where
+                # to insert annotation
+                pages[page_index] = Page(page_index)
+                pageList.append(pages[page_index])
+
+            page = pages[page_index]
+            annotation = create_highlight(points)
+            # There's only one annotationList per page
+            annotationList = page.getchildren()[0]
+            annotationList.append(annotation)
+            text_icon = Element('text', attrib=dict(icon="Comment", type="1"))
+            annotation.append(text_icon)
+
+    # Write the xml document
+    documentInfo.append(pageList)
+    xmldoc = ElementTree(element=documentInfo)
+    xmldoc.write(bytes(destfile_xml), xml_declaration=True, encoding="UTF-8")
+
+
+def create_xml_file_hl(destfile_xml, paged_clippings, pdf_query):
     """
         Create an xml file containing the clippings
-        @param filepath - filename.xml
+        @param destfile_xml - filename.xml
         @param paged_clippings - an iterable of couples,
             eg [ (1, 'here comes the sun'),
                 (2, 'nananana'),
                 (2, 'all right'), ..]
     """
-    assert filepath.endswith(".xml")
+    assert destfile_xml.endswith(".xml")
     paged_clippings_dict = defaultdict(list)
     for p, c in paged_clippings:
         paged_clippings_dict[p].append(c)
 
-    documentInfo = Element('documentInfo', attrib={'url': filepath})
+    documentInfo = Element('documentInfo', attrib={'url': destfile_xml})
     pageList = Element('pageList')
 
     for p_num, p_clippings in paged_clippings_dict.items():
-        print(p_clippings)
+        log.info("%r" % p_clippings)
         page = Element('page', attrib={'number': str(p_num-1)})
         pageList.append(page)
         annotationList = Element('annotationList')
         page.append(annotationList)
-        for pos, clip in enumerate(p_clippings):
-            pageid, points = get_clipping_position(clip, pdf_query)
+        for i, clip in enumerate(p_clippings):
+            pageid, points = pdf_query.get_clipping_position(clip)
             annotation = create_highlight(points)
             annotationList.append(annotation)
             text_icon = Element('text', attrib=dict(icon="Comment", type="1"))
@@ -125,8 +191,7 @@ def create_xml_file_hl(filepath, paged_clippings, pdf_query):
     # Write the xml document
     documentInfo.append(pageList)
     xmldoc = ElementTree(element=documentInfo)
-    xmldoc.write(bytes(filepath), xml_declaration=True, encoding="UTF-8")
-
+    xmldoc.write(bytes(destfile_xml), xml_declaration=True, encoding="UTF-8")
 
 
 def create_xml_file(filepath, paged_clippings):
@@ -147,7 +212,7 @@ def create_xml_file(filepath, paged_clippings):
     pageList = Element('pageList')
 
     for p_num, p_clippings in paged_clippings_dict.items():
-        print(p_clippings)
+        log.info("%r"%p_clippings)
         page = Element('page', attrib={'number': str(p_num)})
         pageList.append(page)
         annotationList = Element('annotationList')
